@@ -1,12 +1,13 @@
 {
   "expo": {
-    "name": "OtheloGame",
+    "name": "OthelloGame",
     "slug": "othelogame",
+    "owner": "sunny@1024",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": ["android"],
     "android": {
-      "package": "com.sunny1024.othelogame",
+      "package": "com.sunny1024.othellogame",
       "versionCode": 1
     },
     "extra": {
