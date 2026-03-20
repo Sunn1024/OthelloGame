@@ -3,7 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 
 export default function App() {
   return ( 
-    <View style={styles.container}>
+    <View style={styles.container}> 
       <Text style={styles.text}>Othello Game</Text>
       <Text style={styles.sub}>Build test successful!</Text>
     </View>
