@@ -1,0 +1,18 @@
+{
+  "expo": {
+    "name": "OthelloGame",
+    "slug": "othelogame",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["android"],
+    "android": {
+      "package": "com.sunny1024.othellogame",
+      "versionCode": 1
+    },
+    "extra": {
+      "eas": {
+        "projectId": "PASTE-YOUR-PROJECT-ID-HERE"
+      }
+    }
+  }
+}
