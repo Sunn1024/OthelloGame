@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ScrollView, TextInput, Animated, Easing,
-  Dimensions,
+  Dimensions, Alert,
 } from 'react-native';
 
 // ═══════════════════════════════════════════════════════════════
@@ -26,7 +26,8 @@ const T = {
 };
 
 const { width: SW } = Dimensions.get('window');
-const CELL = Math.floor((SW - 48) / 8);   // responsive cell size
+const CELL = Math.floor((SW - 48) / 8);
+const MOVE_TIME = 30;
 
 // ═══════════════════════════════════════════════════════════════
 //  CONSTANTS
@@ -64,48 +65,9 @@ const WEIGHT_TABLE = [
 ];
 
 // ═══════════════════════════════════════════════════════════════
-//  SOUND ENGINE  (expo-av)
+//  SOUND (silent stub — safe for Android)
 // ═══════════════════════════════════════════════════════════════
-// We synthesise tones via a tiny base64 WAV generator
-// so no asset files are needed.
-function makeToneWav(freq=440, dur=0.15, vol=0.4) {
-  const sr = 22050, n = Math.floor(sr*dur);
-  const buf = new ArrayBuffer(44 + n*2);
-  const view = new DataView(buf);
-  const wr = (o,v,b=1)=>{ for(let i=0;i<b;i++) view.setUint8(o+i,(v>>(8*i))&0xff); };
-  // WAV header
-  [0x52,0x49,0x46,0x46].forEach((b,i)=>view.setUint8(i,b));
-  view.setUint32(4,36+n*2,true);
-  [0x57,0x41,0x56,0x45,0x66,0x6d,0x74,0x20].forEach((b,i)=>view.setUint8(8+i,b));
-  view.setUint32(16,16,true); view.setUint16(20,1,true); view.setUint16(22,1,true);
-  view.setUint32(24,sr,true); view.setUint32(28,sr*2,true);
-  view.setUint16(32,2,true); view.setUint16(34,16,true);
-  [0x64,0x61,0x74,0x61].forEach((b,i)=>view.setUint8(36+i,b));
-  view.setUint32(40,n*2,true);
-  for(let i=0;i<n;i++){
-    const env = i<sr*0.01 ? i/(sr*0.01) : Math.exp(-3*(i-sr*0.01)/(n-sr*0.01));
-    const s = Math.sin(2*Math.PI*freq*i/sr)*vol*env*32767;
-    view.setInt16(44+i*2,s,true);
-  }
-  const bytes = new Uint8Array(buf);
-  let b64=''; bytes.forEach(b=>b64+=String.fromCharCode(b));
-  return 'data:audio/wav;base64,'+btoa(b64);
-}
-
-const SOUNDS = {
-  place: makeToneWav(600,0.1,0.3),
-  flip:  makeToneWav(440,0.08,0.2),
-  win:   makeToneWav(880,0.4,0.5),
-  lose:  makeToneWav(220,0.5,0.4),
-};
-
-async function playSound(key) {
-  try {
-    const { sound } = await Audio.Sound.createAsync({ uri: SOUNDS[key] });
-    await sound.playAsync();
-    setTimeout(()=>sound.unloadAsync(), 2000);
-  } catch(_) {}
-}
+function playSound(type) { return; }
 
 // ═══════════════════════════════════════════════════════════════
 //  GAME LOGIC
@@ -131,6 +93,7 @@ function getFlips(board,row,col,color) {
   return flips;
 }
 const isValidMove=(b,r,c,color)=>getFlips(b,r,c,color).length>0;
+
 function getAllValidMoves(board,color){
   const m=[];
   for(let r=0;r<BOARD_SIZE;r++) for(let c=0;c<BOARD_SIZE;c++)
@@ -187,7 +150,7 @@ function generateOnlinePlayers(myPts){
   return Array.from({length:count},(_,i)=>{
     const spread = ((Date.now() + i * 137) % 400) - 200;
     const pts=Math.max(0,Math.round(myPts+spread));
-    return {id:i,name:INDIAN_NAMES[(Date.now()+i*17)%INDIAN_NAMES.length],points:pts,tier:getTier(pts)};
+            return {id:i, name:INDIAN_NAMES[(Date.now()+i*17)%INDIAN_NAMES.length], points:pts, tier:getTier(pts), isBot:false};
   });
 }
 function findBestMatch(players,myPts){
@@ -196,14 +159,14 @@ function findBestMatch(players,myPts){
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  CONFETTI COMPONENT
+//  CONFETTI
 // ═══════════════════════════════════════════════════════════════
 const CONFETTI_COLORS=['#ff2d78','#00d4ff','#ffe600','#00ff9f','#bf5fff','#ff8800'];
 function Confetti(){
   const [particles] = useState(()=>
     Array.from({length:30},(_,i)=>({
       id:i,
-      left: (i * 37) % 300,
+      left:(i*37)%300,
       color:CONFETTI_COLORS[i%CONFETTI_COLORS.length],
       size:6+((i*7)%8),
       delay:(i*80)%600,
@@ -212,34 +175,25 @@ function Confetti(){
   const anims = useRef(particles.map(()=>new Animated.Value(0))).current;
 
   useEffect(()=>{
-    const animations = anims.map((anim, i)=>
-      Animated.timing(anim,{
+    Animated.parallel(
+      anims.map((anim,i)=>Animated.timing(anim,{
         toValue:1,
         duration:1800+(i*30)%800,
         delay:particles[i].delay,
         useNativeDriver:true,
         easing:Easing.linear,
-      })
-    );
-    Animated.parallel(animations).start();
+      }))
+    ).start();
   },[]);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {particles.map((p,i)=>(
         <Animated.View key={p.id} style={{
-          position:'absolute',
-          left:p.left,
-          width:p.size,
-          height:p.size,
-          borderRadius:p.size/4,
+          position:'absolute', left:p.left,
+          width:p.size, height:p.size, borderRadius:p.size/4,
           backgroundColor:p.color,
-          transform:[{
-            translateY:anims[i].interpolate({
-              inputRange:[0,1],
-              outputRange:[-20,700],
-            })
-          }],
+          transform:[{translateY:anims[i].interpolate({inputRange:[0,1],outputRange:[-20,700]})}],
         }}/>
       ))}
     </View>
@@ -247,7 +201,7 @@ function Confetti(){
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  ANIMATED PIECE
+//  ANIMATED PIECE (fixed — no string interpolation)
 // ═══════════════════════════════════════════════════════════════
 function AnimatedPiece({color, isNew, isFlipped}){
   const scale = useRef(new Animated.Value(isNew ? 0 : 1)).current;
@@ -269,7 +223,6 @@ function AnimatedPiece({color, isNew, isFlipped}){
   },[isFlipped]);
 
   const isBlack = color===BLACK;
-
   return (
     <Animated.View style={{
       width:CELL-8, height:CELL-8, borderRadius:(CELL-8)/2,
@@ -301,13 +254,12 @@ function PulsingDot(){
       width:10,height:10,borderRadius:5,
       backgroundColor:T.neonGreen,
       opacity:pulse,
-      shadowColor:T.neonGreen, shadowOpacity:1, shadowRadius:6,
     }}/>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  FADE TRANSITION WRAPPER
+//  FADE SCREEN
 // ═══════════════════════════════════════════════════════════════
 function FadeScreen({children}){
   const fade = useRef(new Animated.Value(0)).current;
@@ -318,7 +270,7 @@ function FadeScreen({children}){
 }
 
 // ═══════════════════════════════════════════════════════════════
-//  NEON TEXT COMPONENT
+//  NEON TEXT
 // ═══════════════════════════════════════════════════════════════
 function NeonText({children, color=T.neonBlue, size=32, style}){
   return (
@@ -370,11 +322,11 @@ function MenuScreen({playerName,playerPoints,matchHistory,onSelect}){
         </View>
         <View style={s.menuGrid}>
           {[
-            {key:'pvp',  icon:'👥', label:'Player vs\nPlayer', color:T.neonGreen},
-            {key:'bot',  icon:'🤖', label:'vs Bot',            color:T.neonPink},
-            {key:'online',icon:'🌐',label:'Play\nOnline',      color:T.neonYellow},
+            {key:'pvp',   icon:'👥', label:'Player vs\nPlayer', color:T.neonGreen},
+            {key:'bot',   icon:'🤖', label:'vs Bot',            color:T.neonPink},
+            {key:'online',icon:'🌐', label:'Play\nOnline',      color:T.neonYellow},
             {key:'history',icon:'📊',label:`History\n(${matchHistory.length})`, color:T.neonBlue},
-            {key:'privacy',icon:'🔒',label:'Privacy\nPolicy',  color:T.textDim},
+            {key:'privacy',icon:'🔒',label:'Privacy\nPolicy',   color:T.textDim},
           ].map(m=>(
             <TouchableOpacity key={m.key} style={[s.menuBtn,{borderColor:m.color+'55'}]} onPress={()=>onSelect(m.key)}>
               <Text style={s.menuIcon}>{m.icon}</Text>
@@ -430,12 +382,13 @@ function MatchmakingScreen({playerPoints,playerName,onMatchFound,onCancel}){
       const match=findBestMatch(pool,playerPoints);
       if(match){ setOpponent(match); setPhase('found'); setTimeout(()=>onMatchFound(match,'human'),1500); }
       else {
-        const botName=INDIAN_NAMES[Math.floor(Math.random()*INDIAN_NAMES.length)];
-        const botPts=Math.max(0,playerPoints+Math.round((Math.random()-0.5)*300));
-        const bot={name:botName,points:botPts,tier:getTier(botPts),isBot:true};
+        const idx = Date.now() % INDIAN_NAMES.length;
+        const botName=INDIAN_NAMES[idx];
+        const botPts=Math.max(0,playerPoints+((Date.now()%300)-150));
+        const bot={name:botName, points:botPts, tier:getTier(botPts), isBot:true};
         setOpponent(bot); setPhase('found'); setTimeout(()=>onMatchFound(bot,'bot'),1500);
       }
-    },2500+Math.random()*1500);
+    },2500+((Date.now()%1500)));
     return()=>{clearTimeout(t);clearInterval(dot);};
   },[]);
 
@@ -495,7 +448,9 @@ function HistoryScreen({history,playerName,playerPoints,onBack}){
                 <View key={i} style={[s.histCard,h.won?s.histWon:s.histLost]}>
                   <View style={{flexDirection:'row',justifyContent:'space-between'}}>
                     <Text style={{color:h.won?T.neonGreen:T.neonPink,fontWeight:'800',fontSize:14}}>{h.won?'🏆 WIN':'💀 LOSS'}</Text>
-                    <Text style={{color:h.won?T.neonGreen:T.neonPink,fontWeight:'800'}}>{h.won?'+':'-'}{h.pointsDelta} pts</Text>
+                    {h.isOnlineMode && (
+                      <Text style={{color:h.won?T.neonGreen:T.neonPink,fontWeight:'800'}}>{h.won?'+':'-'}{h.pointsDelta} pts</Text>
+                    )}
                   </View>
                   <Text style={{color:T.text,marginTop:4}}>vs {h.opponentName} <Text style={{color:h.opponentTier.color}}>{h.opponentTier.icon}{h.opponentTier.name}</Text>{h.isBot?' 🤖':''}</Text>
                   <Text style={{color:T.textDim,fontSize:12,marginTop:2}}>⚫ {h.myScore} — ⚪ {h.oppScore}</Text>
@@ -512,9 +467,41 @@ function HistoryScreen({history,playerName,playerPoints,onBack}){
 }
 
 // ═══════════════════════════════════════════════════════════════
+//  PRIVACY SCREEN
+// ═══════════════════════════════════════════════════════════════
+function PrivacyScreen({onBack}){
+  return (
+    <FadeScreen>
+      <View style={s.container}>
+        <NeonText color={T.neonBlue} size={22}>🔒 PRIVACY POLICY</NeonText>
+        <ScrollView style={{width:'100%',paddingHorizontal:20,marginTop:16}} showsVerticalScrollIndicator={false}>
+          {[
+            {title:'Last updated', text:'March 2026'},
+            {title:'1. Data We Collect', text:'Othello Game does not collect any personal data. All game data including your username, points, and match history is stored locally on your device only.'},
+            {title:'2. Third Party Services', text:'This app does not use any third party analytics, advertising, or data collection services.'},
+            {title:'3. Internet Usage', text:'The online matchmaking feature simulates online play locally on your device. No data is transmitted to external servers.'},
+            {title:'4. Children\'s Privacy', text:'This app is suitable for all ages. We do not knowingly collect any information from children under 13.'},
+            {title:'5. Changes', text:'We may update this privacy policy from time to time. Any changes will be reflected in the app update notes.'},
+            {title:'6. Contact', text:'If you have any questions about this privacy policy, please contact us through the Play Store listing.'},
+          ].map((item,i)=>(
+            <View key={i} style={{marginBottom:16}}>
+              <Text style={{color:T.neonBlue,fontWeight:'bold',fontSize:14,marginBottom:4}}>{item.title}</Text>
+              <Text style={{color:T.text,fontSize:13,lineHeight:20}}>{item.text}</Text>
+            </View>
+          ))}
+        </ScrollView>
+        <TouchableOpacity style={[s.neonBtn,{marginTop:12,marginBottom:20}]} onPress={onBack}>
+          <Text style={[s.neonBtnText,{color:T.neonBlue}]}>← BACK</Text>
+        </TouchableOpacity>
+      </View>
+    </FadeScreen>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 //  RESULT SCREEN
 // ═══════════════════════════════════════════════════════════════
-function ResultScreen({won,myScore,oppScore,pointsDelta,newPoints,opponent,onMenu,onPlayAgain}){
+function ResultScreen({won,myScore,oppScore,pointsDelta,newPoints,opponent,isOnlineMode,onMenu,onPlayAgain}){
   const tier=getTier(newPoints);
   return (
     <FadeScreen>
@@ -556,27 +543,27 @@ function ResultScreen({won,myScore,oppScore,pointsDelta,newPoints,opponent,onMen
 //  GAME SCREEN
 // ═══════════════════════════════════════════════════════════════
 function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,onMenu}){
-  const [board,setBoard]=useState(createInitialBoard);
-  const [turn,setTurn]=useState(BLACK);
-  const [gameOver,setGameOver]=useState(false);
-  const [botThinking,setBotThinking]=useState(false);
-  // Track which cells are new or freshly flipped for animation
-  const [newCell,setNewCell]=useState(null);
-  const [flippedCells,setFlippedCells]=useState([]);
+  const [board,setBoard]           = useState(createInitialBoard);
+  const [turn,setTurn]             = useState(BLACK);
+  const [gameOver,setGameOver]     = useState(false);
+  const [botThinking,setBotThinking] = useState(false);
+  const [timeLeft,setTimeLeft]     = useState(MOVE_TIME);
+  const [newCell,setNewCell]       = useState(null);
+  const [flippedCells,setFlippedCells] = useState([]);
+  const timerRef = useRef(null);
 
-  const isBot=mode==='bot'||(mode==='online'&&opponent?.isBot);
+  const isBot = mode==='bot' || (mode==='online' && opponent?.isBot === true);
 
   // ── Move timer ──
   useEffect(()=>{
     if(gameOver||botThinking) return;
-    if(isBot&&turn===WHITE) return;   // don't run timer on bot's turn
+    if(isBot&&turn===WHITE) return;
     setTimeLeft(MOVE_TIME);
     timerRef.current = setInterval(()=>{
       setTimeLeft(t=>{
         if(t<=1){
           clearInterval(timerRef.current);
-          // Time's up — auto pick a random valid move or forfeit
-          const moves = getAllValidMoves(board, turn);
+          const moves=getAllValidMoves(board,turn);
           if(moves.length>0){
             const [r,c]=moves[Math.floor(Math.random()*moves.length)];
             processMove(board,r,c,turn);
@@ -589,6 +576,7 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
     return()=>clearInterval(timerRef.current);
   },[turn,gameOver,botThinking]);
 
+  // ── Bot move ──
   useEffect(()=>{
     if(!isBot||turn!==WHITE||gameOver) return;
     clearInterval(timerRef.current);
@@ -603,6 +591,7 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
   },[turn,board]);
 
   function processMove(cur,row,col,color){
+    clearInterval(timerRef.current);
     const flips=getFlips(cur,row,col,color);
     const nb=applyMove(cur,row,col,color);
     setNewCell([row,col]);
@@ -633,11 +622,20 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
     processMove(board,row,col,turn);
   }
 
+  // ── Back to menu — deduct 10 pts if online ──
+  function handleMenu(){
+    clearInterval(timerRef.current);
+    if(mode==='online'&&!gameOver){
+      onMenu(true); // true = deduct points
+    } else {
+      onMenu(false);
+    }
+  }
+
   const validMoves=getAllValidMoves(board,turn);
   const isValid=(r,c)=>!gameOver&&validMoves.some(([vr,vc])=>vr===r&&vc===c);
-  const {black,white}=countPieces(board);
   const isFlipped=(r,c)=>flippedCells.some(([fr,fc])=>fr===r&&fc===c);
-
+  const {black,white}=countPieces(board);
   const p2Label=opponent?.name??(mode==='pvp'?'Player 2':'Bot');
   const myTier=getTier(playerPoints);
   const oppTier=opponent?getTier(opponent.points):null;
@@ -652,11 +650,10 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
       <View style={s.container}>
         <NeonText color={T.neonBlue} size={22} style={{marginBottom:8}}>♟ OTHELLO</NeonText>
 
-        {/* Score Row */}
         <View style={s.scoreRow}>
           {[
-            {label:mode==='bot'?'⚫ You':`⚫ ${playerName}`, score:black, active:turn===BLACK, tier:myTier, color:T.neonBlue},
-            {label:mode==='bot'?`🤖 ${p2Label}`:`⚪ ${p2Label}`, score:white, active:turn===WHITE, tier:oppTier, color:T.neonPink},
+            {label:mode==='bot'?'⚫ You':`⚫ ${playerName}`,score:black,active:turn===BLACK,tier:myTier,color:T.neonBlue},
+            {label:mode==='bot'?`🤖 ${p2Label}`:`⚪ ${p2Label}`,score:white,active:turn===WHITE,tier:oppTier,color:T.neonPink},
           ].map((p,i)=>(
             <View key={i} style={[s.scoreBox,p.active&&!gameOver&&{borderColor:p.color,shadowColor:p.color,shadowOpacity:0.6,shadowRadius:8,elevation:8}]}>
               <Text style={[s.scoreLabel,p.active&&{color:p.color}]}>{p.label}</Text>
@@ -668,16 +665,13 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
 
         <Text style={[s.turnText,{color:turn===BLACK?T.neonBlue:T.neonPink}]}>{turnLabel}</Text>
 
-        {/* Move Timer — only show on human's turn */}
+        {/* Move Timer */}
         {!gameOver&&!(isBot&&turn===WHITE)&&(
-          <View style={[s.timerBox, timeLeft<=10&&{borderColor:T.neonPink}]}>
-            <Text style={[s.timerText, timeLeft<=10&&{color:T.neonPink}]}>
-              ⏱ {timeLeft}s
-            </Text>
+          <View style={[s.timerBox,timeLeft<=10&&{borderColor:T.neonPink}]}>
+            <Text style={[s.timerText,timeLeft<=10&&{color:T.neonPink}]}>⏱ {timeLeft}s</Text>
           </View>
         )}
 
-        {/* Board */}
         <View style={[s.board,{width:CELL*8+4,height:CELL*8+4}]}>
           {board.map((row,ri)=>(
             <View key={ri} style={{flexDirection:'row'}}>
@@ -693,7 +687,7 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
                     {cell!==EMPTY&&(
                       <AnimatedPiece
                         color={cell}
-                        isNew={newCell&&newCell[0]===ri&&newCell[1]===ci}
+                        isNew={!!(newCell&&newCell[0]===ri&&newCell[1]===ci)}
                         isFlipped={isFlipped(ri,ci)}
                       />
                     )}
@@ -705,7 +699,7 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
           ))}
         </View>
 
-        <TouchableOpacity style={[s.neonBtn,{marginTop:16,borderColor:T.textDim}]} onPress={onMenu}>
+        <TouchableOpacity style={[s.neonBtn,{marginTop:16,borderColor:T.textDim}]} onPress={handleMenu}>
           <Text style={[s.neonBtnText,{color:T.textDim}]}>🏠 MENU</Text>
         </TouchableOpacity>
       </View>
@@ -717,40 +711,52 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
 //  ROOT APP
 // ═══════════════════════════════════════════════════════════════
 export default function App(){
-  const [screen,setScreen]       =useState('setup');
-  const [playerName,setPlayerName]=useState('');
-  const [playerPoints,setPoints]  =useState(100);
-  const [matchHistory,setHistory] =useState([]);
-  const [gameMode,setMode]        =useState(null);
-  const [difficulty,setDiff]      =useState(null);
-  const [opponent,setOpponent]    =useState(null);
-  const [lastResult,setLastResult]=useState(null);
+  const [screen,setScreen]        = useState('setup');
+  const [playerName,setPlayerName]= useState('');
+  const [playerPoints,setPoints]  = useState(100);
+  const [matchHistory,setHistory] = useState([]);
+  const [gameMode,setMode]        = useState(null);
+  const [difficulty,setDiff]      = useState(null);
+  const [opponent,setOpponent]    = useState(null);
+  const [lastResult,setLastResult]= useState(null);
 
-  const goMenu=()=>setScreen('menu');
+  function goMenu(deductPoints=false){
+    if(deductPoints){
+      setPoints(p=>Math.max(0,p-10));
+    }
+    setScreen('menu');
+  }
 
   function handleSetupDone(name){ setPlayerName(name); setScreen('menu'); }
 
   function handleMenuSelect(c){
-    if(c==='history'){setScreen('history');return;}
-    if(c==='privacy'){setScreen('privacy');return;}
-    if(c==='pvp'){setMode('pvp');setOpponent({name:'Player 2',points:playerPoints});setScreen('game');return;}
-    if(c==='bot'){setMode('bot');setScreen('difficulty');return;}
-    if(c==='online'){setMode('online');setScreen('matchmaking');return;}
+    if(c==='history') { setScreen('history'); return; }
+    if(c==='privacy') { setScreen('privacy'); return; }
+    if(c==='pvp')     { setMode('pvp'); setOpponent({name:'Player 2',points:playerPoints}); setScreen('game'); return; }
+    if(c==='bot')     { setMode('bot'); setScreen('difficulty'); return; }
+    if(c==='online')  { setMode('online'); setScreen('matchmaking'); return; }
   }
 
   function handleDiff(d){ setDiff(d); setOpponent({name:'Bot',points:playerPoints,isBot:true}); setScreen('game'); }
 
-  function handleMatchFound(opp){ setOpponent(opp); setScreen('game'); }
+  function handleMatchFound(opp){
+    // Ensure isBot flag is always explicitly boolean
+    setOpponent({...opp, isBot: opp.isBot === true});
+    setScreen('game');
+  }
 
   function handleGameEnd(won,myScore,oppScore){
-    const isOnlineMode = gameMode === 'online';
-    const delta = isOnlineMode
-      ? calcPointsChange(playerPoints, opponent?.points??100, won, myScore, oppScore)
-      : 0;
-    const newPts = isOnlineMode
-      ? Math.max(0, playerPoints + (won ? delta : -delta))
-      : playerPoints;
-    setHistory(h=>[...h,{won,myScore,oppScore,opponentName:opponent?.name??'Unknown',opponentTier:getTier(opponent?.points??100),pointsDelta:delta,isBot:opponent?.isBot??gameMode==='bot',isOnlineMode}]);
+    const isOnlineMode = gameMode==='online';
+    const delta = isOnlineMode ? calcPointsChange(playerPoints,opponent?.points??100,won,myScore,oppScore) : 0;
+    const newPts = isOnlineMode ? Math.max(0,playerPoints+(won?delta:-delta)) : playerPoints;
+    setHistory(h=>[...h,{
+      won, myScore, oppScore,
+      opponentName: opponent?.name??'Unknown',
+      opponentTier: getTier(opponent?.points??100),
+      pointsDelta: delta,
+      isBot: opponent?.isBot??gameMode==='bot',
+      isOnlineMode,
+    }]);
     setPoints(newPts);
     setLastResult({won,myScore,oppScore,pointsDelta:delta,newPoints:newPts,isOnlineMode});
     setScreen('result');
@@ -762,14 +768,25 @@ export default function App(){
     else setScreen('game');
   }
 
-  if(screen==='setup')      return <SetupScreen onDone={handleSetupDone}/>;
-  if(screen==='menu')       return <MenuScreen playerName={playerName} playerPoints={playerPoints} matchHistory={matchHistory} onSelect={handleMenuSelect}/>;
-  if(screen==='history')    return <HistoryScreen history={matchHistory} playerName={playerName} playerPoints={playerPoints} onBack={goMenu}/>;
-  if(screen==='privacy')    return <PrivacyScreen onBack={goMenu}/>;
-  if(screen==='difficulty') return <DifficultyScreen onSelect={handleDiff} onBack={goMenu}/>;
-  if(screen==='matchmaking')return <MatchmakingScreen playerPoints={playerPoints} playerName={playerName} onMatchFound={handleMatchFound} onCancel={goMenu}/>;
-  if(screen==='game')       return <GameScreen mode={gameMode} difficulty={difficulty} opponent={opponent} playerName={playerName} playerPoints={playerPoints} onGameEnd={handleGameEnd} onMenu={goMenu}/>;
-  if(screen==='result'&&lastResult) return <ResultScreen {...lastResult} opponent={opponent} onMenu={goMenu} onPlayAgain={handlePlayAgain}/>;
+  if(screen==='setup')       return <SetupScreen onDone={handleSetupDone}/>;
+  if(screen==='menu')        return <MenuScreen playerName={playerName} playerPoints={playerPoints} matchHistory={matchHistory} onSelect={handleMenuSelect}/>;
+  if(screen==='history')     return <HistoryScreen history={matchHistory} playerName={playerName} playerPoints={playerPoints} onBack={()=>goMenu()}/>;
+  if(screen==='privacy')     return <PrivacyScreen onBack={()=>goMenu()}/>;
+  if(screen==='difficulty')  return <DifficultyScreen onSelect={handleDiff} onBack={()=>goMenu()}/>;
+  if(screen==='matchmaking') return <MatchmakingScreen playerPoints={playerPoints} playerName={playerName} onMatchFound={handleMatchFound} onCancel={()=>goMenu()}/>;
+  if(screen==='game')        return (
+    <GameScreen
+      mode={gameMode} difficulty={difficulty} opponent={opponent}
+      playerName={playerName} playerPoints={playerPoints}
+      onGameEnd={handleGameEnd} onMenu={goMenu}
+    />
+  );
+  if(screen==='result'&&lastResult) return (
+    <ResultScreen
+      {...lastResult} opponent={opponent}
+      onMenu={()=>goMenu()} onPlayAgain={handlePlayAgain}
+    />
+  );
   return null;
 }
 
@@ -796,11 +813,11 @@ const s = StyleSheet.create({
   scoreRow:    {flexDirection:'row',gap:12,marginBottom:8},
   scoreBox:    {alignItems:'center',paddingHorizontal:16,paddingVertical:8,borderRadius:12,borderWidth:1.5,borderColor:T.bgCard,backgroundColor:T.bgCard},
   scoreLabel:  {color:T.textDim,fontSize:12,fontWeight:'600'},
-  turnText:    {fontSize:13,fontStyle:'italic',marginBottom:8,fontWeight:'600'},
-  board:       {borderWidth:2,borderColor:T.neonBlue+'44',borderRadius:4,overflow:'hidden',backgroundColor:T.bgBoard},
-  cell:        {backgroundColor:T.cellColor,borderWidth:0.5,borderColor:T.cellBorder,alignItems:'center',justifyContent:'center'},
+  turnText:    {fontSize:13,fontStyle:'italic',marginBottom:4,fontWeight:'600'},
   timerBox:    {borderWidth:1.5,borderColor:T.neonGreen,borderRadius:20,paddingHorizontal:20,paddingVertical:4,marginBottom:8},
   timerText:   {color:T.neonGreen,fontSize:15,fontWeight:'800',letterSpacing:1},
+  board:       {borderWidth:2,borderColor:T.neonBlue+'44',borderRadius:4,overflow:'hidden',backgroundColor:T.bgBoard},
+  cell:        {backgroundColor:T.cellColor,borderWidth:0.5,borderColor:T.cellBorder,alignItems:'center',justifyContent:'center'},
   histCard:    {borderRadius:10,padding:12,marginBottom:8,borderLeftWidth:3},
   histWon:     {backgroundColor:'#0d1f0d',borderLeftColor:T.neonGreen},
   histLost:    {backgroundColor:'#1f0d0d',borderLeftColor:T.neonPink},
