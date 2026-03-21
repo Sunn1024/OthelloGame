@@ -181,10 +181,13 @@ function calcPointsChange(myPts,oppPts,won,myScore,oppScore){
 //  MATCHMAKING
 // ═══════════════════════════════════════════════════════════════
 function generateOnlinePlayers(myPts){
-  if(Math.random()<0.3) return [];
-  return Array.from({length:Math.floor(Math.random()*3)+1},(_,i)=>{
-    const pts=Math.max(0,Math.round(myPts+(Math.random()-0.5)*400));
-    return {id:i,name:INDIAN_NAMES[Math.floor(Math.random()*INDIAN_NAMES.length)],points:pts,tier:getTier(pts)};
+  const rand = Date.now() % 100;
+  if(rand < 30) return [];
+  const count = (rand % 3) + 1;
+  return Array.from({length:count},(_,i)=>{
+    const spread = ((Date.now() + i * 137) % 400) - 200;
+    const pts=Math.max(0,Math.round(myPts+spread));
+    return {id:i,name:INDIAN_NAMES[(Date.now()+i*17)%INDIAN_NAMES.length],points:pts,tier:getTier(pts)};
   });
 }
 function findBestMatch(players,myPts){
@@ -197,35 +200,46 @@ function findBestMatch(players,myPts){
 // ═══════════════════════════════════════════════════════════════
 const CONFETTI_COLORS=['#ff2d78','#00d4ff','#ffe600','#00ff9f','#bf5fff','#ff8800'];
 function Confetti(){
-  const pieces = useRef(
-    Array.from({length:40},(_,i)=>({
-      x: Math.random() * 300,
-      y:new Animated.Value(-20),
-      r:new Animated.Value(0),
+  const [particles] = useState(()=>
+    Array.from({length:30},(_,i)=>({
+      id:i,
+      left: (i * 37) % 300,
       color:CONFETTI_COLORS[i%CONFETTI_COLORS.length],
-      size:6+Math.random()*8,
-      delay:Math.random()*600,
+      size:6+((i*7)%8),
+      delay:(i*80)%600,
     }))
-  ).current;
+  );
+  const anims = useRef(particles.map(()=>new Animated.Value(0))).current;
 
   useEffect(()=>{
-    pieces.forEach(p=>{
-      Animated.parallel([
-        Animated.timing(p.y,{toValue:700,duration:1800+Math.random()*800,delay:p.delay,useNativeDriver:true,easing:Easing.linear}),
-        Animated.timing(p.r,{toValue:720,duration:2000,delay:p.delay,useNativeDriver:true}),
-      ]).start();
-    });
+    const animations = anims.map((anim, i)=>
+      Animated.timing(anim,{
+        toValue:1,
+        duration:1800+(i*30)%800,
+        delay:particles[i].delay,
+        useNativeDriver:true,
+        easing:Easing.linear,
+      })
+    );
+    Animated.parallel(animations).start();
   },[]);
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      {pieces.map((p,i)=>(
-        <Animated.View key={i} style={{
+      {particles.map((p,i)=>(
+        <Animated.View key={p.id} style={{
           position:'absolute',
-          left:p.x,
-          width:p.size, height:p.size, borderRadius:p.size/4,
+          left:p.left,
+          width:p.size,
+          height:p.size,
+          borderRadius:p.size/4,
           backgroundColor:p.color,
-          transform:[{translateY:p.y},{rotate:p.r.interpolate({inputRange:[0,720],outputRange:['0deg','720deg']})}],
+          transform:[{
+            translateY:anims[i].interpolate({
+              inputRange:[0,1],
+              outputRange:[-20,700],
+            })
+          }],
         }}/>
       ))}
     </View>
