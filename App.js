@@ -250,8 +250,8 @@ function Confetti(){
 //  ANIMATED PIECE
 // ═══════════════════════════════════════════════════════════════
 function AnimatedPiece({color, isNew, isFlipped}){
-  const scale = useRef(new Animated.Value(isNew?0:1)).current;
-  const rotateY = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(isNew ? 0 : 1)).current;
+  const flipAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(()=>{
     if(isNew){
@@ -262,13 +262,12 @@ function AnimatedPiece({color, isNew, isFlipped}){
   useEffect(()=>{
     if(isFlipped){
       Animated.sequence([
-        Animated.timing(rotateY,{toValue:1,duration:150,useNativeDriver:true,easing:Easing.linear}),
-        Animated.timing(rotateY,{toValue:0,duration:150,useNativeDriver:true,easing:Easing.linear}),
+        Animated.timing(flipAnim,{toValue:0.05,duration:150,useNativeDriver:true,easing:Easing.linear}),
+        Animated.timing(flipAnim,{toValue:1,duration:150,useNativeDriver:true,easing:Easing.linear}),
       ]).start();
     }
   },[isFlipped]);
 
-  const spin = rotateY.interpolate({inputRange:[0,1],outputRange:['1','0.05']});
   const isBlack = color===BLACK;
 
   return (
@@ -277,7 +276,7 @@ function AnimatedPiece({color, isNew, isFlipped}){
       backgroundColor: isBlack ? T.black : T.white,
       borderWidth:1.5,
       borderColor: isBlack ? T.neonBlue : T.neonPink,
-      transform:[{scale},{scaleX:spin}],
+      transform:[{scale},{scaleX:flipAnim}],
       shadowColor: isBlack ? T.neonBlue : T.neonPink,
       shadowOpacity:0.8, shadowRadius:6, elevation:6,
     }}/>
