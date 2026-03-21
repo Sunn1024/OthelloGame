@@ -10,6 +10,9 @@
       "package": "com.sunny1024.othellogame",
       "versionCode": 1
     },
+    "splash": {
+      "backgroundColor": "#0d0d1a"
+    },
     "extra": {
       "eas": {
         "projectId": "84bec937-b02a-4b26-8c46-5a9844108bdb"
