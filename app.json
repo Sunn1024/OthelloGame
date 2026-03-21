@@ -2,7 +2,7 @@
   "expo": {
     "name": "OthelloGame",
     "slug": "othelogame",
-    "owner": "sunny@1024",
+    "owner": "sunny1024",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": ["android"],
