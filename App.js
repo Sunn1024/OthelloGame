@@ -199,7 +199,7 @@ const CONFETTI_COLORS=['#ff2d78','#00d4ff','#ffe600','#00ff9f','#bf5fff','#ff880
 function Confetti(){
   const pieces = useRef(
     Array.from({length:40},(_,i)=>({
-      x:new Animated.Value(Math.random()*SW),
+      x: Math.random() * 300,
       y:new Animated.Value(-20),
       r:new Animated.Value(0),
       color:CONFETTI_COLORS[i%CONFETTI_COLORS.length],
@@ -221,7 +221,8 @@ function Confetti(){
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {pieces.map((p,i)=>(
         <Animated.View key={i} style={{
-          position:'absolute', left:p.x,
+          position:'absolute',
+          left:p.x,
           width:p.size, height:p.size, borderRadius:p.size/4,
           backgroundColor:p.color,
           transform:[{translateY:p.y},{rotate:p.r.interpolate({inputRange:[0,720],outputRange:['0deg','720deg']})}],
