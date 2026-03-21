@@ -445,15 +445,19 @@ function HistoryScreen({history,playerName,playerPoints,onBack}){
           ? <Text style={{color:T.textDim,marginTop:20}}>No matches yet. Get on the grid!</Text>
           : <ScrollView style={{width:'100%',paddingHorizontal:16,maxHeight:400}}>
               {[...history].reverse().map((h,i)=>(
-                <View key={i} style={[s.histCard,h.won?s.histWon:s.histLost]}>
+                <View key={i} style={[s.histCard, h.abandoned ? s.histAbandoned : h.won===true ? s.histWon : h.won===null ? s.histDraw : s.histLost]}>
                   <View style={{flexDirection:'row',justifyContent:'space-between'}}>
-                    <Text style={{color:h.won?T.neonGreen:T.neonPink,fontWeight:'800',fontSize:14}}>{h.won?'🏆 WIN':'💀 LOSS'}</Text>
+                    <Text style={{color: h.abandoned ? T.neonYellow : h.won===true ? T.neonGreen : h.won===null ? T.neonYellow : T.neonPink, fontWeight:'800',fontSize:14}}>
+                      {h.abandoned ? '🚪 ABANDONED' : h.won===true ? '🏆 WIN' : h.won===null ? '🤝 DRAW' : '💀 LOSS'}
+                    </Text>
                     {h.isOnlineMode && (
-                      <Text style={{color:h.won?T.neonGreen:T.neonPink,fontWeight:'800'}}>{h.won?'+':'-'}{h.pointsDelta} pts</Text>
+                      <Text style={{color: h.abandoned||h.won===false ? T.neonPink : h.won===null ? T.neonYellow : T.neonGreen, fontWeight:'800'}}>
+                        {h.abandoned||h.won===false ? `-${h.pointsDelta}` : h.won===null ? '0' : `+${h.pointsDelta}`} pts
+                      </Text>
                     )}
                   </View>
                   <Text style={{color:T.text,marginTop:4}}>vs {h.opponentName} <Text style={{color:h.opponentTier.color}}>{h.opponentTier.icon}{h.opponentTier.name}</Text>{h.isBot?' 🤖':''}</Text>
-                  <Text style={{color:T.textDim,fontSize:12,marginTop:2}}>⚫ {h.myScore} — ⚪ {h.oppScore}</Text>
+                  {!h.abandoned && <Text style={{color:T.textDim,fontSize:12,marginTop:2}}>⚫ {h.myScore} — ⚪ {h.oppScore}</Text>}
                 </View>
               ))}
             </ScrollView>
@@ -501,21 +505,24 @@ function PrivacyScreen({onBack}){
 // ═══════════════════════════════════════════════════════════════
 //  RESULT SCREEN
 // ═══════════════════════════════════════════════════════════════
-function ResultScreen({won,myScore,oppScore,pointsDelta,newPoints,opponent,isOnlineMode,onMenu,onPlayAgain}){
+function ResultScreen({won,myScore,oppScore,pointsDelta,newPoints,opponent,isOnlineMode,isDraw,onMenu,onPlayAgain}){
   const tier=getTier(newPoints);
+  const resultColor = isDraw ? T.neonYellow : won ? T.neonGreen : T.neonPink;
+  const resultIcon  = isDraw ? '🤝' : won ? '🏆' : '💀';
+  const resultText  = isDraw ? 'DRAW!' : won ? 'VICTORY!' : 'DEFEAT';
   return (
     <FadeScreen>
-      {won&&<Confetti/>}
+      {won===true&&<Confetti/>}
       <View style={s.container}>
-        <NeonText color={won?T.neonGreen:T.neonPink} size={52}>{won?'🏆':'💀'}</NeonText>
-        <NeonText color={won?T.neonGreen:T.neonPink} size={36}>{won?'VICTORY!':'DEFEAT'}</NeonText>
+        <NeonText color={resultColor} size={52}>{resultIcon}</NeonText>
+        <NeonText color={resultColor} size={36}>{resultText}</NeonText>
         <Text style={s.subtitle}>vs {opponent?.name??'Opponent'}</Text>
         <View style={[s.profileCard,{marginTop:16,width:220}]}>
           <Text style={{color:T.text,fontSize:20,fontWeight:'bold'}}>⚫ {myScore}  —  ⚪ {oppScore}</Text>
           {isOnlineMode ? (
             <>
-              <NeonText color={won?T.neonGreen:T.neonPink} size={26} style={{marginTop:8}}>
-                {won?'+':'-'}{pointsDelta} pts
+              <NeonText color={resultColor} size={26} style={{marginTop:8}}>
+                {isDraw ? 'No points change' : `${won?'+':'-'}${pointsDelta} pts`}
               </NeonText>
               <Text style={{color:T.textDim,marginTop:4}}>{newPoints} total</Text>
               <Text style={[s.tierBadge,{color:tier.color,fontSize:16,marginTop:4}]}>{tier.icon} {tier.name}</Text>
@@ -551,6 +558,8 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
   const [newCell,setNewCell]       = useState(null);
   const [flippedCells,setFlippedCells] = useState([]);
   const timerRef = useRef(null);
+
+  const [skipCount, setSkipCount] = useState(0);
 
   const isBot = mode==='bot' || (mode==='online' && opponent?.isBot === true);
 
@@ -592,6 +601,7 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
 
   function processMove(cur,row,col,color){
     clearInterval(timerRef.current);
+    setSkipCount(0); // reset skip count on valid move
     const flips=getFlips(cur,row,col,color);
     const nb=applyMove(cur,row,col,color);
     setNewCell([row,col]);
@@ -604,8 +614,8 @@ function GameScreen({mode,difficulty,opponent,playerName,playerPoints,onGameEnd,
     if(!nxM.length&&!curM.length){
       setBoard(nb); setGameOver(true);
       const {black,white}=countPieces(nb);
-      const won=black>white;
-      playSound(won?'win':'lose');
+      const won = black===white ? null : black>white; // null = draw
+      playSound(won===true?'win':'lose');
       setTimeout(()=>onGameEnd(won,black,white),800);
     } else if(!nxM.length){
       setBoard(nb);
@@ -740,8 +750,7 @@ export default function App(){
   function handleDiff(d){ setDiff(d); setOpponent({name:'Bot',points:playerPoints,isBot:true}); setScreen('game'); }
 
   function handleMatchFound(opp){
-    // Ensure isBot flag is always explicitly boolean
-    setOpponent({...opp, isBot: opp.isBot === true});
+    setOpponent({...opp, isBot: true}); // ALWAYS bot in background
     setScreen('game');
   }
 
@@ -821,4 +830,6 @@ const s = StyleSheet.create({
   histCard:    {borderRadius:10,padding:12,marginBottom:8,borderLeftWidth:3},
   histWon:     {backgroundColor:'#0d1f0d',borderLeftColor:T.neonGreen},
   histLost:    {backgroundColor:'#1f0d0d',borderLeftColor:T.neonPink},
+  histDraw:    {backgroundColor:'#1f1a0d',borderLeftColor:T.neonYellow},
+  histAbandoned:{backgroundColor:'#1a1a0d',borderLeftColor:T.neonYellow},
 });
